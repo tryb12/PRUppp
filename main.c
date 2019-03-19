@@ -10,17 +10,59 @@
 #define MAX_CHARS	8
 #define BUFFER		40
 
+uint8_t rx_buffer[BUFFER];
+uint16_t rx_buf_idx = 0;
+uint8_t frame_start = 0;
+uint8_t frame_end = 0;
 
-//******************************************************************************
-//    IEP Timer Config
-//      This function waits until there is info in the RX FIFO and then returns
-//      the first character entered.
-//******************************************************************************
-char ReadMessageIn(void)
+uint8_t tx_buffer[BUFFER];
+uint16_t tx_buf_idx = 0;
+
+void Rx(void)
 {
-	while (!CT_UART.LSR_bit.DR);
+	while (CT_UART.LSR_bit.DR)
+	{	
+		if (rx_buf_idx < BUFFER)
+		{
+			rx_buffer[rx_buf_idx] = CT_UART.RBR_bit.DATA;
+			if(rx_buffer[rx_buf_idx] == 0x7e)
+			{
+				if(!frame_start)
+				{
+					frame_start = 1;	
+				}
+				else
+				{
+					frame_end = 1;	
+					break;
+				}
+			}
+			rx_buf_idx++;
+		}
+	}
+}
 
-	return CT_UART.RBR_bit.DATA;
+void Tx(void)
+{
+	uint16_t cnt = 0;
+	/* Check if the TX FIFO and the TX SR are completely empty */
+	if (CT_UART.LSR_bit.TEMT)
+	{
+		while (tx_buffer[tx_buf_idx] != NULL && cnt < MAX_CHARS) 
+		{
+			CT_UART.THR = tx_buffer[tx_buf_idx];
+			tx_buf_idx++;
+			cnt++;
+		}
+	}
+}
+
+void Process(void)
+{
+	if(frame_start && frame_end)
+	{
+		;//do operations, clear rx_buffer
+	}
 }
 
 void init(void)
@@ -68,21 +110,14 @@ void init(void)
 
 void main(void)
 {
-	uint32_t i;
 	volatile uint32_t not_done = 1;
 
-	char rxBuffer[BUFFER];
-	rxBuffer[BUFFER-1] = NULL;
 	init();
 
 	while(1) {
-		for (i = 0; i < BUFFER-1 ; i++) {
-			rxBuffer[i] = ReadMessageIn();
-			if(rxBuffer[i] == '\r') {
-				rxBuffer[i+1] = NULL;
-				break;
-			}
-		}
+		Rx();
+		Process();
+		Tx();	
 	}
 
 	/*** DONE SENDING DATA ***/
