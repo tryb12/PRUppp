@@ -1,5 +1,5 @@
 export PRUN=0
-export TARGET=uart1
+export TARGET=main
 echo PRUN=$PRUN
 echo TARGET=$TARGET
 
