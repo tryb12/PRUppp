@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <pru_uart.h>
 #include "resource_table_empty.h"
+#include "PRUppp.h"
 
 /* The FIFO size on the PRU UART is 16 bytes; however, we are (arbitrarily)
  * only going to send 8 at a time */
@@ -20,25 +21,22 @@ uint16_t tx_buf_idx = 0;
 
 void Rx(void)
 {
-	while (CT_UART.LSR_bit.DR)
+	while (CT_UART.LSR_bit.DR && rx_buf_idx < BUFFER)
 	{	
-		if (rx_buf_idx < BUFFER)
+		rx_buffer[rx_buf_idx] = CT_UART.RBR_bit.DATA;
+		if(rx_buffer[rx_buf_idx] == 0x7e)
 		{
-			rx_buffer[rx_buf_idx] = CT_UART.RBR_bit.DATA;
-			if(rx_buffer[rx_buf_idx] == 0x7e)
+			if(!frame_start)
 			{
-				if(!frame_start)
-				{
-					frame_start = 1;	
-				}
-				else
-				{
-					frame_end = 1;	
-					break;
-				}
+				frame_start = 1;	
 			}
-			rx_buf_idx++;
+			else
+			{
+				frame_end = 1;	
+				break;
+			}
 		}
+		rx_buf_idx++;
 	}
 }
 
