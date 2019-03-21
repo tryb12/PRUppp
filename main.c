@@ -72,11 +72,17 @@ void Tx(void)
 
 void Process(void)
 {
+	uint16_t idx = 0;
 	if(frame_start && frame_end)
 	{
-		pppHeader * ppp = &tx_buffer[0];
-		
-	//	memcpy(&tx_buffer[0], &rx_buffer[0], sizeof(rx_buffer));//do operations, clear rx_buffer
+		pppHeader * ppp = (pppHeader*)&rx_buffer[0];
+		tx_buffer[idx++] = ppp->address;
+		tx_buffer[idx++] = ppp->control;
+		tx_buffer[idx++] = (ppp->protocol >> 8) & 0xff;
+		tx_buffer[idx++] = ppp->protocol & 0xff;
+
+		tx_buf_idx = 0;
+		rx_buf_idx = 0;
 		frame_start = frame_end = 0;
 	}
 }
