@@ -21,10 +21,11 @@ uint16_t tx_buf_idx = 0;
 
 void Rx(void)
 {
-	while (CT_UART.LSR_bit.DR && rx_buf_idx < BUFFER)
+	while (CT_UART.LSR_bit.DR)
 	{	
-		rx_buffer[rx_buf_idx] = CT_UART.RBR_bit.DATA;
-		if(rx_buffer[rx_buf_idx] == 0x7e)
+		uint8_t rx;
+		rx = CT_UART.RBR_bit.DATA;
+		if(rx == 0x7e)
 		{
 			if(!frame_start)
 			{
@@ -36,7 +37,20 @@ void Rx(void)
 				break;
 			}
 		}
-		rx_buf_idx++;
+		else
+		{	
+			if(frame_start && !frame_end) 
+			{
+				rx_buffer[rx_buf_idx++] = rx;
+			}
+		}
+
+		if(rx_buf_idx == BUFFER)
+		{
+			rx_buf_idx = 0;
+			frame_start = 0;
+			frame_end = 0;
+		}
 	}
 }
 
@@ -55,11 +69,15 @@ void Tx(void)
 	}
 }
 
+
 void Process(void)
 {
 	if(frame_start && frame_end)
 	{
-		;//do operations, clear rx_buffer
+		pppHeader * ppp = &tx_buffer[0];
+		
+	//	memcpy(&tx_buffer[0], &rx_buffer[0], sizeof(rx_buffer));//do operations, clear rx_buffer
+		frame_start = frame_end = 0;
 	}
 }
 

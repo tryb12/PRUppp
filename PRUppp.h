@@ -3,13 +3,10 @@
 #define NCP 0x8021
 
 typedef struct {
-	uint32_t flag : 8;
 	uint32_t address : 8;
 	uint32_t control : 8;
 	uint32_t protocol : 16;
-	uint8_t * data;
-	uint32_t crc : 8;
-} pppFrame;
+} pppHeader;
 
 typedef struct {
 	uint32_t code : 8;
