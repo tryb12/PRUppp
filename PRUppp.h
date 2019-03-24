@@ -1,11 +1,12 @@
-#define IP  0x0021
-#define LCP 0xc021
-#define NCP 0x8021
+#define IP  0x2100
+#define LCP 0x21C0
+#define NCP 0x2180
 
 typedef struct {
 	uint32_t address : 8;
 	uint32_t control : 8;
 	uint32_t protocol : 16;
+	uint8_t * data;
 } pppHeader;
 
 typedef struct {
@@ -14,6 +15,12 @@ typedef struct {
 	uint32_t length : 16;
 	uint8_t * data;
 } cpFrame; 
+
+typedef struct {
+	uint32_t type : 8;
+	uint32_t length : 8;
+	uint8_t * data;
+} cpOption;
 
 typedef struct {
 	uint32_t version : 4;
@@ -33,6 +40,8 @@ typedef struct {
 	uint32_t sourceAddr;
 
 	uint32_t destinationAddr;
+
+	uint8_t * payload;
 } ipv4Header;
 
 typedef struct {

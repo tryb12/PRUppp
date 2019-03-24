@@ -70,16 +70,91 @@ void Tx(void)
 }
 
 
+#define CONFIGURE_REQ 		0x01
+#define CONFIGURE_ACK 		0x02
+#define CONFIGURE_NAK 		0x03
+#define CONFIGURE_REJECT	0x04
+#define TERMINATE_REQ 		0x05
+#define TERMINATE_ACK 		0x06
+#define ECHO_REQ 		0x09
+#define ECHO_REPLY 		0x0A
+
+void processLCP(cpFrame* lcp)
+{
+	switch(lcp->code)
+	{
+	case LCP_CONFIGURE_REQ:
+		
+		break;
+	case LCP_CONFIGURE_ACK: 
+		
+		break;
+	case LCP_ECHO_REQ:
+
+		break;
+	case LCP_ECHO_REPLY:
+		break;
+	default:
+		break;
+	}
+
+}
+
+handleIPCPConfigReq()
+{
+
+}
+
+void processNCP(cpFrame* ncp)
+{
+	switch(ncp->code)
+	{
+	case LCP_CONFIGURE_REQ:
+		handleIPCPConfigReq(ncp->data, ncp->length);	
+		break;
+	case LCP_CONFIGURE_ACK: 
+		break;
+	case LCP_CONFIGURE_NAK: 
+		
+		break;
+	case LCP_ECHO_REQ:
+
+		break;
+	case LCP_ECHO_REPLY:
+		break;
+	default:
+		break;
+	}
+
+
+}
+
+void processIP(ipv4Header* ip)
+{
+
+}
+
 void Process(void)
 {
 	uint16_t idx = 0;
 	if(frame_start && frame_end)
 	{
 		pppHeader * ppp = (pppHeader*)&rx_buffer[0];
-		tx_buffer[idx++] = ppp->address;
-		tx_buffer[idx++] = ppp->control;
-		tx_buffer[idx++] = (ppp->protocol >> 8) & 0xff;
-		tx_buffer[idx++] = ppp->protocol & 0xff;
+		
+		switch(ppp->protocol)
+		{
+		case LCP:
+			processLCP((cpFrame*)ppp->data);
+			break;
+		case NCP:
+			processNCP((cpFrame*)ppp->data);
+			break;
+		case IP:
+			processIP((ipv4Header*)ppp->data);
+			break;
+		default:
+			break;
+		}
 
 		tx_buf_idx = 0;
 		rx_buf_idx = 0;
