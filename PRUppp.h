@@ -42,7 +42,7 @@ typedef struct {
 	uint32_t destinationAddr;
 
 	uint8_t * payload;
-} ipv4Header;
+} ipHeader;
 
 typedef struct {
 	uint32_t type : 8;

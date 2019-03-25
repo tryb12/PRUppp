@@ -11,13 +11,20 @@
 #define MAX_CHARS	8
 #define BUFFER		40
 
-uint8_t rx_buffer[BUFFER];
-uint16_t rx_buf_idx = 0;
+#define OUR_IP 0x01020304
+
+#define CLOSED 0
+#define OPEN 1
+
+
+uint8_t rxBuffer[BUFFER];
+uint16_t rxBufIdx = 0;
 uint8_t frame_start = 0;
 uint8_t frame_end = 0;
 
-uint8_t tx_buffer[BUFFER];
+uint8_t txBuffer[BUFFER];
 uint16_t tx_buf_idx = 0;
+
 
 void Rx(void)
 {
@@ -41,13 +48,13 @@ void Rx(void)
 		{	
 			if(frame_start && !frame_end) 
 			{
-				rx_buffer[rx_buf_idx++] = rx;
+				rxBuffer[rxBufIdx++] = rx;
 			}
 		}
 
-		if(rx_buf_idx == BUFFER)
+		if(rxBufIdx == BUFFER)
 		{
-			rx_buf_idx = 0;
+			rxBufIdx = 0;
 			frame_start = 0;
 			frame_end = 0;
 		}
@@ -60,9 +67,9 @@ void Tx(void)
 	/* Check if the TX FIFO and the TX SR are completely empty */
 	if (CT_UART.LSR_bit.TEMT)
 	{
-		while (tx_buffer[tx_buf_idx] != NULL && cnt < MAX_CHARS) 
+		while (txBuffer[tx_buf_idx] != NULL && cnt < MAX_CHARS) 
 		{
-			CT_UART.THR = tx_buffer[tx_buf_idx];
+			CT_UART.THR = txBuffer[tx_buf_idx];
 			tx_buf_idx++;
 			cnt++;
 		}
@@ -79,20 +86,41 @@ void Tx(void)
 #define ECHO_REQ 		0x09
 #define ECHO_REPLY 		0x0A
 
+
+void sendPpp()
+{
+
+	memcpy(&txBuffer[0], &rxBuffer[0], sizeof(rxBuffer));//temorary, will use switching bufs
+	//update fcs
+
+}
+
+void handleLCPConfigReq(cpFrame * lcp)
+{
+	if(lcp->length == 4) //Only simple configuration, discard otherwise
+	{
+		lcp->code = CONFIGURE_ACK;
+		sendPpp();
+	}
+	else
+	{
+		lcp->code = CONFIGURE_REJECT;
+	}
+
+}
+
 void processLCP(cpFrame* lcp)
 {
 	switch(lcp->code)
 	{
-	case LCP_CONFIGURE_REQ:
-		
+	case CONFIGURE_REQ:
+		handleLCPConfigReq(lcp);
 		break;
-	case LCP_CONFIGURE_ACK: 
-		
+	case CONFIGURE_ACK: 
 		break;
-	case LCP_ECHO_REQ:
-
+	case ECHO_REQ:
 		break;
-	case LCP_ECHO_REPLY:
+	case ECHO_REPLY:
 		break;
 	default:
 		break;
@@ -100,27 +128,88 @@ void processLCP(cpFrame* lcp)
 
 }
 
-handleIPCPConfigReq()
+uint32_t bufToIp(uint8_t * buf)
 {
+	uint32_t ip;
+	int i;
+	for(i = 0; i < 4; ++i)
+	{
+		ip = (ip << 8) | (buf[i] & 0xff);
+	}
+	return ip;
+}
 
+void handleIPCPConfigReq(cpOption * ipcp)
+{
+	uint32_t ipAddr;
+	if(ipcp->type == 0x03) // IP-Address 
+	{
+		ipAddr = bufToIp(ipcp->data);
+		if(ipAddr == 0)
+		{
+			sendPpp();
+			//send ipcp nack with ip
+		}
+		else
+		{
+			//send ipcp nack with ip
+		}
+	}
+	
+
+}
+
+void handleIPCPConfigAck(cpOption * ipcp)
+{
+	uint32_t ipAddr;
+	if(ipcp->type == 0x03) // IP-Address 
+	{
+		ipAddr = bufToIp(ipcp->data);
+		if(ipAddr == OUR_IP)
+		{
+			//address configured
+		}
+		else
+		{
+			//send ipcp nack with ip
+		}
+	}
+	
+}
+
+void handleIPCPConfigNak(cpOption * ipcp)
+{
+	uint32_t ipAddr;
+	if(ipcp->type == 0x03) // IP-Address 
+	{
+		ipAddr = bufToIp(ipcp->data);
+		if(ipAddr == OUR_IP)
+		{
+			//address configured
+		}
+		else
+		{
+			//send ipcp reject
+		}
+	}
 }
 
 void processNCP(cpFrame* ncp)
 {
 	switch(ncp->code)
 	{
-	case LCP_CONFIGURE_REQ:
-		handleIPCPConfigReq(ncp->data, ncp->length);	
+	case CONFIGURE_REQ:
+		handleIPCPConfigReq((cpOption*)ncp->data);	
 		break;
-	case LCP_CONFIGURE_ACK: 
+	case CONFIGURE_ACK: 
+		handleIPCPConfigAck((cpOption*)ncp->data);
 		break;
-	case LCP_CONFIGURE_NAK: 
-		
+	case CONFIGURE_NAK: 
+		handleIPCPConfigNak((cpOption*)ncp->data);
 		break;
-	case LCP_ECHO_REQ:
-
+	case ECHO_REQ:
 		break;
-	case LCP_ECHO_REPLY:
+	case ECHO_REPLY:
 		break;
 	default:
 		break;
@@ -129,8 +218,21 @@ void processNCP(cpFrame* ncp)
 
 }
 
-void processIP(ipv4Header* ip)
+void processIcmp(icmpHeader* icmp)
 {
+}
+
+void processIP(ipHeader* ip)
+{
+	switch(ip->protocol)
+	{
+		case 1:
+			processIcmp((icmpHeader*)ip->payload);
+			break;
+		default:
+			break;
+	}
+
 
 }
 
@@ -139,7 +241,7 @@ void Process(void)
 	uint16_t idx = 0;
 	if(frame_start && frame_end)
 	{
-		pppHeader * ppp = (pppHeader*)&rx_buffer[0];
+		pppHeader * ppp = (pppHeader*)&rxBuffer[0];
 		
 		switch(ppp->protocol)
 		{
@@ -150,14 +252,14 @@ void Process(void)
 			processNCP((cpFrame*)ppp->data);
 			break;
 		case IP:
-			processIP((ipv4Header*)ppp->data);
+			processIP((ipHeader*)ppp->data);
 			break;
 		default:
 			break;
 		}
 
 		tx_buf_idx = 0;
-		rx_buf_idx = 0;
+		rxBufIdx = 0;
 		frame_start = frame_end = 0;
 	}
 }
