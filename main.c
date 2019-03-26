@@ -4,6 +4,7 @@
 #include <pru_uart.h>
 #include "resource_table_empty.h"
 #include "PRUppp.h"
+#include "fcs16.c"
 
 /* The FIFO size on the PRU UART is 16 bytes; however, we are (arbitrarily)
  * only going to send 8 at a time */
@@ -89,10 +90,14 @@ void Tx(void)
 
 void sendPpp()
 {
-
-	memcpy(&txBuffer[0], &rxBuffer[0], sizeof(rxBuffer));//temorary, will use switching bufs
+	uint16_t fcs;
+	uint16_t len = rxBufIdx-2;
+	memcpy(txBuffer, rxBuffer, sizeof(rxBuffer));//temorary, will use switching bufs
 	//update fcs
-
+	fcs = pppfcs16( PPPINITFCS16, txBuffer, len);
+       	fcs ^= 0xffff;                 /* complement */
+       	txBuffer[len] = (fcs & 0x00ff);      /* least significant byte first */
+        txBuffer[len+1] = ((fcs >> 8) & 0x00ff);
 }
 
 void handleLCPConfigReq(cpFrame * lcp)
