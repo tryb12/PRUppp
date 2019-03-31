@@ -25,7 +25,6 @@ uint8_t frameStart = 0;
 uint8_t frameEnd = 0;
 
 uint8_t txBuffer[BUFFER];
-uint16_t txBufIdx = 0;
 
 uint8_t unstuff = 0;
 
@@ -85,27 +84,28 @@ void Rx(void)
 
 void Tx(void)
 {
+	static uint16_t txBufIdx = 0;
 	uint16_t cnt = 0;
 	uint8_t tx = 0;
-	/* Check if the TX FIFO and the TX SR are completely empty */
+
 	if(!txReady) return;
+
+	/* Check if the TX FIFO and the TX SR are completely empty */
 	while (CT_UART.LSR_bit.TEMT)
 	{
 		while (txBufIdx < bufLen && cnt < MAX_CHARS) 
 		{
 			tx = txBuffer[txBufIdx];
-			CT_UART.THR = tx;
-			/*
 			if(tx < 0x20 || tx == 0x7d || tx == 0x7e )
 			{
 				CT_UART.THR = 0x7d;
-				CT_UART.THR = tx^0x20;
+				txBuffer[txBufIdx] = tx^0x20;
 			}
 			else
 			{
+				CT_UART.THR = tx;
+				txBufIdx++;
 			}
-			*/
-			txBufIdx++;
 			cnt++;
 		}
 		if (txBufIdx == bufLen)
@@ -293,7 +293,6 @@ void Process(void)
 	if(frameEnd)
 	{
 		frameEnd = 0;
-		txBufIdx = 0;
 //		sendPpp(); return;
 		pppHeader * ppp = (pppHeader*)&rxBuffer[0];
 
@@ -326,7 +325,6 @@ void Process(void)
 			break;
 		}
 
-		txBufIdx = 0;
 		frameStart = frameEnd = 0;
 	}
 }
