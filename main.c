@@ -10,14 +10,14 @@
  * only going to send 8 at a time */
 #define FIFO_SIZE	16
 #define MAX_CHARS	8
-#define BUFFER		40
+#define BUFFER		140
 
 #define OUR_IP 0x01020304
 
 #define CLOSED 0
 #define OPEN 1
 
-
+uint8_t txReady = 0;
 uint8_t rxBuffer[BUFFER];
 uint16_t rxBufIdx = 0;
 uint16_t bufLen = 0;
@@ -45,11 +45,15 @@ void Rx(void)
 			else
 			{
 				frameEnd = 1;	
+				frameStart = 0;	
+				bufLen = rxBufIdx;
+				rxBufIdx = 0;
+				break;
 			}
 		}
 		else
 		{	
-			if(frameStart) 
+			if(frameStart && !frameEnd) 
 			{
 				if(rx == 0x7d)
 				{
@@ -68,11 +72,6 @@ void Rx(void)
 					}
 				}
 			}
-			if(frameEnd)
-			{
-				bufLen = rxBufIdx;
-				break;
-			}
 		}
 
 		if(rxBufIdx == BUFFER)
@@ -87,14 +86,33 @@ void Rx(void)
 void Tx(void)
 {
 	uint16_t cnt = 0;
+	uint8_t tx = 0;
 	/* Check if the TX FIFO and the TX SR are completely empty */
-	if (CT_UART.LSR_bit.TEMT)
+	if(!txReady) return;
+	while (CT_UART.LSR_bit.TEMT)
 	{
-		while (txBuffer[txBufIdx] != NULL && cnt < MAX_CHARS) 
+		while (txBufIdx < bufLen && cnt < MAX_CHARS) 
 		{
-			CT_UART.THR = txBuffer[txBufIdx];
+			tx = txBuffer[txBufIdx];
+			CT_UART.THR = tx;
+			/*
+			if(tx < 0x20 || tx == 0x7d || tx == 0x7e )
+			{
+				CT_UART.THR = 0x7d;
+				CT_UART.THR = tx^0x20;
+			}
+			else
+			{
+			}
+			*/
 			txBufIdx++;
 			cnt++;
+		}
+		if (txBufIdx == bufLen)
+		{
+			txBufIdx = 0;
+			txReady = 0;
+			break;
 		}
 	}
 }
@@ -117,10 +135,11 @@ void sendPpp()
 
 	memcpy(txBuffer, rxBuffer, sizeof(rxBuffer));//temorary, will use switching bufs
 	//update fcs
-	fcs = pppfcs16( PPPINITFCS16, &txBuffer[1], len - 2);
-       	fcs ^= 0xffff;                 /* complement */
-       	txBuffer[len - 2] = (fcs & 0x00ff);      /* least significant byte first */
-        txBuffer[len - 1] = ((fcs >> 8) & 0x00ff);
+//	fcs = pppfcs16( PPPINITFCS16, &txBuffer[1], len - 2);
+ //      	fcs ^= 0xffff;                 /* complement */
+  //     	txBuffer[len - 1] = (fcs & 0x00ff);      /* least significant byte first */
+   //     txBuffer[len ] = ((fcs >> 8) & 0x00ff);
+	txReady = 1;
 }
 
 void handleLCPConfigReq(cpFrame * lcp)
@@ -268,15 +287,29 @@ void processIP(ipHeader* ip)
 void Process(void)
 {
 	uint16_t idx = 0;
-	uint16_t len = rxBufIdx-2;
+	uint16_t len = bufLen;
 	uint16_t fcs = 0;
 
-	if(frameStart && frameEnd)
+	if(frameEnd)
 	{
-		pppHeader * ppp = (pppHeader*)&rxBuffer[1];
+		frameEnd = 0;
+		txBufIdx = 0;
+//		sendPpp(); return;
+		pppHeader * ppp = (pppHeader*)&rxBuffer[0];
 
-		fcs = pppfcs16( PPPINITFCS16, &rxBuffer[1], len);
-		if(fcs != PPPGOODFCS16) return;
+		fcs = pppfcs16( PPPINITFCS16, &rxBuffer[0], len);
+		if(fcs != PPPGOODFCS16)
+		{
+		       	rxBuffer[2] = 0xff; 
+			sendPpp();
+		}
+		else
+		{
+			sendPpp();
+		}
+
+
+		return; //DEBUG
 
 		switch(ppp->protocol)
 		{
@@ -294,7 +327,6 @@ void Process(void)
 		}
 
 		txBufIdx = 0;
-		rxBufIdx = 0;
 		frameStart = frameEnd = 0;
 	}
 }
