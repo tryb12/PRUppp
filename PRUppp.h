@@ -6,20 +6,20 @@ typedef struct {
 	uint32_t address : 8;
 	uint32_t control : 8;
 	uint32_t protocol : 16;
-	uint8_t * data;
+	uint8_t data[0];
 } pppHeader;
 
 typedef struct {
 	uint32_t code : 8;
-	uint32_t indentifier : 8;
+	uint32_t identifier : 8;
 	uint32_t length : 16;
-	uint8_t * data;
+	uint8_t data[0];
 } cpFrame; 
 
 typedef struct {
 	uint32_t type : 8;
 	uint32_t length : 8;
-	uint8_t * data;
+	uint8_t data[0];
 } cpOption;
 
 typedef struct {
@@ -41,7 +41,7 @@ typedef struct {
 
 	uint32_t destinationAddr;
 
-	uint8_t * payload;
+	uint8_t payload[0];
 } ipHeader;
 
 typedef struct {
@@ -52,5 +52,5 @@ typedef struct {
 	uint32_t identifier : 16;
 	uint32_t sequenceNumber : 16;
 
-	uint8_t * payload;
+	uint8_t payload[0];
 } icmpHeader;

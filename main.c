@@ -131,6 +131,10 @@ void Tx(void)
 #define ECHO_REQ 		0x09
 #define ECHO_REPLY 		0x0A
 
+uint32_t swap(uint32_t bytes)
+{
+	return ((bytes & 0xff00) >> 8) | ((bytes & 0xff) << 8);
+}
 
 void sendPpp()
 {
@@ -148,7 +152,7 @@ void sendPpp()
 
 void handleLCPConfigReq(cpFrame * lcp)
 {
-	if(lcp->length == 4) //Only simple configuration, discard otherwise
+	if(swap(lcp->length) == 4) //Only simple configuration, discard otherwise
 	{
 		lcp->code = CONFIGURE_ACK;
 	}
@@ -159,6 +163,19 @@ void handleLCPConfigReq(cpFrame * lcp)
 	sendPpp();
 }
 
+void handleLCPTerm(cpFrame * lcp)
+{
+	lcp->code = TERMINATE_ACK;
+	sendPpp();
+}
+
+void handleLCPEcho(cpFrame * lcp)
+{
+	lcp->code = ECHO_REPLY;
+	sendPpp();
+}
+
+
 void processLCP(cpFrame* lcp)
 {
 	switch(lcp->code)
@@ -166,12 +183,11 @@ void processLCP(cpFrame* lcp)
 	case CONFIGURE_REQ:
 		handleLCPConfigReq(lcp);
 		break;
-	case CONFIGURE_ACK: 
-		break;
 	case ECHO_REQ:
+		handleLCPEcho(lcp);
 		break;
-	case ECHO_REPLY:
-		break;
+	case TERMINATE_REQ:
+		handleLCPTerm(lcp);
 	default:
 		break;
 	}
@@ -197,12 +213,7 @@ void swapIp(uint32_t* src, uint32_t* dst)
 	*dst = tmp;
 }
 
-uint32_t swap(uint32_t bytes)
-{
-	return ((bytes & 0xff00) >> 8) | ((bytes & 0xff) << 8);
-}
-
-void handleIPCPConfigReq(cpOption * ipcp)
+void handleIPCPConfigReq(cpOption * ipcp, cpFrame* ncp)
 {
 	uint32_t ipAddr;
 	if(ipcp->type == 0x03) // IP-Address 
@@ -210,16 +221,17 @@ void handleIPCPConfigReq(cpOption * ipcp)
 		ipAddr = bufToIp(ipcp->data);
 		if(ipAddr == 0)
 		{
+			*ipcp->data = swap(OUR_IP); 
+			ncp->code = CONFIGURE_NAK;
 			sendPpp();
-			//send ipcp nack with ip
 		}
 		else
 		{
+			ncp->code = CONFIGURE_NAK;
+			sendPpp();
 			//send ipcp nack with ip
 		}
 	}
-	
-
 }
 
 void handleIPCPConfigAck(cpOption * ipcp)
@@ -262,7 +274,7 @@ void processNCP(cpFrame* ncp)
 	switch(ncp->code)
 	{
 	case CONFIGURE_REQ:
-		handleIPCPConfigReq((cpOption*)ncp->data);	
+		handleIPCPConfigReq((cpOption*)ncp->data, ncp);	
 		break;
 	case CONFIGURE_ACK: 
 		handleIPCPConfigAck((cpOption*)ncp->data);
@@ -315,7 +327,7 @@ void processIcmp(ipHeader* ip, icmpHeader* icmp)
 		ip->checksum = 0;
 		ip->checksum = swap(checksum16bit((uint8_t*)ip, ip->ihl));
 		icmp->checksum = 0;
-		icmp->checksum = swap(checksum16bit((uint8_t*)icmp, ip->length - 4*ip->ihl));
+		icmp->checksum = swap(checksum16bit((uint8_t*)icmp, swap(ip->length) - 4*ip->ihl));
 		sendPpp();
 	}
 }
@@ -354,12 +366,14 @@ void Process(void)
 			return;
 		}
 
+
 		pppHeader * ppp = (pppHeader*)&rxBuffer[1];
 
 		if(ppp->address != 0xff || ppp->control != 0x03) 
 		{
-		//	return;
+			return;
 		}
+
 		
 		switch(ppp->protocol)
 		{
