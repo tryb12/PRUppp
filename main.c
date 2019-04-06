@@ -10,7 +10,7 @@
  * only going to send 8 at a time */
 #define FIFO_SIZE	16
 #define MAX_CHARS	8
-#define BUFFER		140
+#define BUFFER_SIZE	1500
 
 #define OUR_IP 0x01020304
 
@@ -18,12 +18,12 @@
 #define OPEN 1
 
 uint8_t txReady = 0;
-uint8_t rxBuffer[BUFFER];
+uint8_t rxBuffer[BUFFER_SIZE];
 uint16_t bufLen = 0;
 uint8_t frameStart = 0;
 uint8_t frameEnd = 0;
 
-uint8_t txBuffer[BUFFER];
+uint8_t txBuffer[BUFFER_SIZE];
 
 uint8_t unstuff = 0;
 
@@ -75,7 +75,7 @@ void Rx(void)
 			}
 		}
 
-		if(rxBufIdx == BUFFER)
+		if(rxBufIdx == BUFFER_SIZE)
 		{
 			rxBufIdx = 0;
 			frameStart = 0;
@@ -137,7 +137,7 @@ void sendPpp()
 	uint16_t fcs;
 	uint16_t len = bufLen - 2;
 
-	memcpy(txBuffer, rxBuffer, sizeof(rxBuffer));//temorary, will use switching bufs
+	memcpy(txBuffer, rxBuffer, bufLen);//temorary, will use switching bufs
 	//update fcs
 	fcs = pppfcs16( PPPINITFCS16, &txBuffer[1], len-2);
        	fcs ^= 0xffff;                 /* complement */
@@ -157,7 +157,6 @@ void handleLCPConfigReq(cpFrame * lcp)
 		lcp->code = CONFIGURE_REJECT;
 	}
 	sendPpp();
-
 }
 
 void processLCP(cpFrame* lcp)
@@ -188,6 +187,19 @@ uint32_t bufToIp(uint8_t * buf)
 		ip = (ip << 8) | (buf[i] & 0xff);
 	}
 	return ip;
+}
+
+void swapIp(uint32_t* src, uint32_t* dst)
+{
+	uint32_t tmp;
+	tmp = *src;
+	*src = *dst;
+	*dst = tmp;
+}
+
+uint32_t swap(uint32_t bytes)
+{
+	return ((bytes & 0xff00) >> 8) | ((bytes & 0xff) << 8);
 }
 
 void handleIPCPConfigReq(cpOption * ipcp)
@@ -269,16 +281,53 @@ void processNCP(cpFrame* ncp)
 
 }
 
-void processIcmp(icmpHeader* icmp)
+uint32_t checksum16bit(uint8_t* buf, uint16_t len)
 {
+	uint32_t sum = 0;
+	uint16_t carry = 0;
+	uint16_t i = 0;
+
+	while(i < len)
+	{
+		sum += (buf[i] << 8) | buf[i+1]; //16 bit sum
+		i =2*i;
+	}
+
+	while(carry = (sum >> 16))
+	{
+		sum = sum & 0xffff + carry; 
+	}
+
+	return ~sum; //one's complement
 }
+
+
+#define ICMP_ECHO_REQUEST 0
+#define ICMP_ECHO_REPLY 8
+
+void processIcmp(ipHeader* ip, icmpHeader* icmp)
+{
+	if(icmp->type == ICMP_ECHO_REQUEST)		
+	{
+		icmp->type = ICMP_ECHO_REPLY;
+		ip->ttl--;
+		swapIp(&ip->sourceAddr, &ip->destinationAddr);	
+		ip->checksum = 0;
+		ip->checksum = swap(checksum16bit((uint8_t*)ip, ip->ihl));
+		icmp->checksum = 0;
+		icmp->checksum = swap(checksum16bit((uint8_t*)icmp, ip->length - 4*ip->ihl));
+		sendPpp();
+	}
+}
+
+#define IP_ICMP 1
 
 void processIP(ipHeader* ip)
 {
 	switch(ip->protocol)
 	{
-		case 1:
-			processIcmp((icmpHeader*)ip->payload);
+		case IP_ICMP:
+			processIcmp(ip, (icmpHeader*)ip->payload);
 			break;
 		default:
 			break;
@@ -309,7 +358,7 @@ void Process(void)
 
 		if(ppp->address != 0xff || ppp->control != 0x03) 
 		{
-			return;
+		//	return;
 		}
 		
 		switch(ppp->protocol)
