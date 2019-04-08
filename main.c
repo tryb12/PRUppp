@@ -12,12 +12,13 @@
 #define MAX_CHARS	8
 #define BUFFER_SIZE	1500
 
-#define OUR_IP 0x01020304
+#define OUR_IP 0x04030201
 
 #define CLOSED 0
 #define OPEN 1
 
 uint8_t txReady = 0;
+uint8_t txLen = 0;
 uint8_t rxBuffer[BUFFER_SIZE];
 uint16_t bufLen = 0;
 uint8_t frameStart = 0;
@@ -84,6 +85,44 @@ void Rx(void)
 	}
 }
 
+void TxConf(void)
+{
+	uint8_t cnt, tx = 0;
+	uint16_t txBufIdx = 0;
+	if(!txReady) return;
+
+	while (1) {
+		cnt = 0;
+
+		/* Wait until the TX FIFO and the TX SR are completely empty */
+		while (!CT_UART.LSR_bit.TEMT);
+
+		while (txBufIdx < txLen && cnt < MAX_CHARS) 
+		{
+			tx = txBuffer[txBufIdx];
+			if(tx < 0x20 || tx == 0x7d || tx == 0x7e && txBufIdx > 0 && txBufIdx < (txLen-1)  )
+			{
+				CT_UART.THR = 0x7d;
+				txBuffer[txBufIdx] = tx^0x20;
+			}
+			else
+			{
+				CT_UART.THR = tx;
+				txBufIdx++;
+			}
+			cnt++;
+		}
+		if (txBufIdx == txLen)
+			break;
+	}
+
+	/* Wait until the TX FIFO and the TX SR are completely empty */
+	while (!CT_UART.LSR_bit.TEMT);
+	txReady = 0;
+
+}
+
+
 void Tx(void)
 {
 	static uint16_t txBufIdx = 0;
@@ -96,10 +135,10 @@ void Tx(void)
 	/* Check if the TX FIFO and the TX SR are completely empty */
 	while (CT_UART.LSR_bit.TEMT)
 	{
-		while (txBufIdx < bufLen && cnt < MAX_CHARS) 
+		while (txBufIdx < txLen && cnt < MAX_CHARS) 
 		{
 			tx = txBuffer[txBufIdx];
-			if(tx < 0x20 || tx == 0x7d || tx == 0x7e && txBufIdx > 0 && txBufIdx < (bufLen-1)  )
+			if(tx < 0x20 || tx == 0x7d || tx == 0x7e && txBufIdx > 0 && txBufIdx < (txLen-1)  )
 			{
 				CT_UART.THR = 0x7d;
 				txBuffer[txBufIdx] = tx^0x20;
@@ -112,7 +151,7 @@ void Tx(void)
 			cnt++;
 		}
 
-		if (txBufIdx == bufLen)
+		if (txBufIdx == txLen)
 		{
 			txBufIdx = 0;
 			txReady = 0;
@@ -140,8 +179,9 @@ void sendPpp()
 {
 	uint16_t fcs;
 	uint16_t len = bufLen - 2;
+	txLen = bufLen;
 
-	memcpy(txBuffer, rxBuffer, bufLen);//temorary, will use switching bufs
+	memcpy(&txBuffer[0], &rxBuffer[0], sizeof(rxBuffer));//temorary, will use switching bufs
 	//update fcs
 	fcs = pppfcs16( PPPINITFCS16, &txBuffer[1], len-2);
        	fcs ^= 0xffff;                 /* complement */
@@ -155,12 +195,17 @@ void handleLCPConfigReq(cpFrame * lcp)
 	if(swap(lcp->length) == 4) //Only simple configuration, discard otherwise
 	{
 		lcp->code = CONFIGURE_ACK;
+		sendPpp();
 	}
 	else
 	{
 		lcp->code = CONFIGURE_REJECT;
+		sendPpp();
+		TxConf();
+		
+		lcp->code = CONFIGURE_REQ;
+		sendPpp();
 	}
-	sendPpp();
 }
 
 void handleLCPTerm(cpFrame * lcp)
@@ -188,6 +233,7 @@ void processLCP(cpFrame* lcp)
 		break;
 	case TERMINATE_REQ:
 		handleLCPTerm(lcp);
+		break;
 	default:
 		break;
 	}
@@ -203,6 +249,16 @@ uint32_t bufToIp(uint8_t * buf)
 		ip = (ip << 8) | (buf[i] & 0xff);
 	}
 	return ip;
+}
+
+void ipToBuf(uint8_t * buf, uint32_t ip)
+{
+	int i;
+	for(i = 0; i < 4; i++)
+	{
+		buf[i] = ip & 0xff;
+		ip = ip >> 8;
+	}
 }
 
 void swapIp(uint32_t* src, uint32_t* dst)
@@ -221,13 +277,13 @@ void handleIPCPConfigReq(cpOption * ipcp, cpFrame* ncp)
 		ipAddr = bufToIp(ipcp->data);
 		if(ipAddr == 0)
 		{
-			*ipcp->data = swap(OUR_IP); 
+			//ipToBuf(ipcp->data, OUR_IP); 
 			ncp->code = CONFIGURE_NAK;
 			sendPpp();
 		}
 		else
 		{
-			ncp->code = CONFIGURE_NAK;
+			ncp->code = CONFIGURE_ACK;
 			sendPpp();
 			//send ipcp nack with ip
 		}
