@@ -187,7 +187,7 @@ void Tx(void)
 #define ECHO_REQ 		0x09
 #define ECHO_REPLY 		0x0A
 
-uint32_t swap(uint32_t bytes)
+uint16_t swap(uint16_t bytes)
 {
 	return ((bytes & 0xff00) >> 8) | ((bytes & 0xff) << 8);
 }
@@ -376,11 +376,12 @@ void processNCP(cpFrame* ncp)
 
 }
 
-uint32_t checksum16bit(uint8_t* buf, uint16_t len)
+uint16_t checksum16bit(uint8_t* buf, uint16_t len)
 {
 	uint32_t sum = 0;
 	uint16_t carry = 0;
 	uint16_t i = 0;
+	uint16_t comp = 0;
 
 	while(i < len)
 	{
@@ -393,29 +394,35 @@ uint32_t checksum16bit(uint8_t* buf, uint16_t len)
 		sum = sum & 0xffff + carry; 
 	}
 
-	return ~sum; //one's complement
+	comp = (uint16_t) sum;
+	return ~comp; //one's complement
 }
 
 
-#define ICMP_ECHO_REQUEST 0
-#define ICMP_ECHO_REPLY 8
+#define ICMP_ECHO_REPLY 0x00
+#define ICMP_ECHO_REQUEST 0x08
 
 void processIcmp(ipHeader* ip, icmpHeader* icmp)
 {
+		icmp->type = ICMP_ECHO_REPLY;
+		swapIp(&ip->sourceAddr, &ip->destinationAddr);	
+		sendPpp();
+		return;
+
 	if(icmp->type == ICMP_ECHO_REQUEST)		
 	{
 		icmp->type = ICMP_ECHO_REPLY;
 		ip->ttl--;
 		swapIp(&ip->sourceAddr, &ip->destinationAddr);	
 		ip->checksum = 0;
-		ip->checksum = swap(checksum16bit((uint8_t*)ip, ip->ihl));
+		ip->checksum = swap(checksum16bit((uint8_t*)ip, 4*ip->ihl));
 		icmp->checksum = 0;
 		icmp->checksum = swap(checksum16bit((uint8_t*)icmp, swap(ip->length) - 4*ip->ihl));
 		sendPpp();
 	}
 }
 
-#define IP_ICMP 1
+#define IP_ICMP 0x01
 
 void processIP(ipHeader* ip)
 {

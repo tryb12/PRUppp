@@ -23,15 +23,16 @@ typedef struct {
 } cpOption;
 
 typedef struct {
-	uint32_t version : 4;
 	uint32_t ihl : 4;
+	uint32_t version : 4;
+	uint32_t ecn : 2; 
 	uint32_t dscp : 6; 
-	uint32_t ecn : 1; 
 	uint32_t length : 16;
 
 	uint32_t identyfication : 16;
+	uint32_t fragmentOffset1 : 5;
 	uint32_t flags : 3;
-	uint32_t fragmentOffset : 8;
+	uint32_t fragmentOffset2 : 8;
 
 	uint32_t ttl : 8;
 	uint32_t protocol : 8;
