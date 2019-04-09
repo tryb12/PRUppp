@@ -386,12 +386,12 @@ uint16_t checksum16bit(uint8_t* buf, uint16_t len)
 	while(i < len)
 	{
 		sum += (buf[i] << 8) | buf[i+1]; //16 bit sum
-		i =2*i;
+		i += 2;
 	}
 
 	while(carry = (sum >> 16))
 	{
-		sum = sum & 0xffff + carry; 
+		sum = (sum & 0xffff) + carry; 
 	}
 
 	comp = (uint16_t) sum;
@@ -404,16 +404,11 @@ uint16_t checksum16bit(uint8_t* buf, uint16_t len)
 
 void processIcmp(ipHeader* ip, icmpHeader* icmp)
 {
-		icmp->type = ICMP_ECHO_REPLY;
-		swapIp(&ip->sourceAddr, &ip->destinationAddr);	
-		sendPpp();
-		return;
-
 	if(icmp->type == ICMP_ECHO_REQUEST)		
 	{
 		icmp->type = ICMP_ECHO_REPLY;
-		ip->ttl--;
 		swapIp(&ip->sourceAddr, &ip->destinationAddr);	
+		ip->ttl--;
 		ip->checksum = 0;
 		ip->checksum = swap(checksum16bit((uint8_t*)ip, 4*ip->ihl));
 		icmp->checksum = 0;
