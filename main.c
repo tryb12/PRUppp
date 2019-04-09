@@ -13,9 +13,12 @@
 #define BUFFER_SIZE	1500
 
 #define OUR_IP 0x04030201
+#define THEIR_IP 0x05030201
 
 #define CLOSED 0
 #define OPEN 1
+
+#define ESCAPE 1
 
 uint8_t txReady = 0;
 uint8_t txLen = 0;
@@ -57,6 +60,7 @@ void Rx(void)
 		{
 			if(frameStart && !frameEnd) 
 			{
+#ifdef ESCAPE
 				if(rx == 0x7d)
 				{
 					unstuff = 1;		
@@ -73,6 +77,9 @@ void Rx(void)
 						rxBuffer[rxBufIdx++] = rx;
 					}
 				}
+#else
+				rxBuffer[rxBufIdx++] = rx;
+#endif
 			}
 		}
 
@@ -100,6 +107,7 @@ void TxConf(void)
 		while (txBufIdx < txLen && cnt < MAX_CHARS) 
 		{
 			tx = txBuffer[txBufIdx];
+#ifdef ESCAPE
 			if(tx < 0x20 || tx == 0x7d || tx == 0x7e && txBufIdx > 0 && txBufIdx < (txLen-1)  )
 			{
 				CT_UART.THR = 0x7d;
@@ -110,6 +118,10 @@ void TxConf(void)
 				CT_UART.THR = tx;
 				txBufIdx++;
 			}
+#else
+			CT_UART.THR = tx;
+			txBufIdx++;
+#endif
 			cnt++;
 		}
 		if (txBufIdx == txLen)
@@ -138,6 +150,7 @@ void Tx(void)
 		while (txBufIdx < txLen && cnt < MAX_CHARS) 
 		{
 			tx = txBuffer[txBufIdx];
+#ifdef ESCAPE
 			if(tx < 0x20 || tx == 0x7d || tx == 0x7e && txBufIdx > 0 && txBufIdx < (txLen-1)  )
 			{
 				CT_UART.THR = 0x7d;
@@ -148,6 +161,10 @@ void Tx(void)
 				CT_UART.THR = tx;
 				txBufIdx++;
 			}
+#else
+			CT_UART.THR = tx;
+			txBufIdx++;
+#endif
 			cnt++;
 		}
 
@@ -196,16 +213,17 @@ void handleLCPConfigReq(cpFrame * lcp)
 	{
 		lcp->code = CONFIGURE_ACK;
 		sendPpp();
+		TxConf();
 	}
 	else
 	{
 		lcp->code = CONFIGURE_REJECT;
 		sendPpp();
 		TxConf();
-		
+	}	
 		lcp->code = CONFIGURE_REQ;
 		sendPpp();
-	}
+
 }
 
 void handleLCPTerm(cpFrame * lcp)
@@ -277,15 +295,24 @@ void handleIPCPConfigReq(cpOption * ipcp, cpFrame* ncp)
 		ipAddr = bufToIp(ipcp->data);
 		if(ipAddr == 0)
 		{
-			//ipToBuf(ipcp->data, OUR_IP); 
+			ipToBuf(ipcp->data, OUR_IP); 
 			ncp->code = CONFIGURE_NAK;
 			sendPpp();
+			TxConf();
+			ipToBuf(ipcp->data, THEIR_IP); 
+			ncp->code = CONFIGURE_REQ;
+			sendPpp();
 		}
-		else
+	/*	else if (ipAddr == OUR_IP)
 		{
 			ncp->code = CONFIGURE_ACK;
 			sendPpp();
 			//send ipcp nack with ip
+		}*/
+		else
+		{
+			ncp->code = CONFIGURE_ACK;
+			sendPpp();
 		}
 	}
 }
