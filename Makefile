@@ -1,62 +1,31 @@
-# 
-# Copyright (c) 2016 Zubeen Tolani <ZeekHuge - zeekhuge@gmail.com>
-# Copyright (c) 2017 Texas Instruments - Jason Kridner <jdk@ti.com>
-# 
-
-# TARGET must be defined as the file to be compiled without the .c.
-# PRUN must be defined as the PRU number (0 or 1) to compile for.
-
-# PRU_CGT environment variable points to the TI PRU compiler directory.
-# PRU_SUPPORT points to pru-software-support-package.
-# GEN_DIR points to where to put the generated files.
-PRU_CGT:=/usr/share/ti/cgt-pru
 PRU_SUPPORT:=/usr/lib/ti/pru-software-support-package
-GEN_DIR:=/tmp/pru$(PRUN)-gen
 
-LINKER_COMMAND_FILE=AM335x_PRU.cmd
-LIBS=--library=$(PRU_SUPPORT)/lib/rpmsg_lib.lib
 INCLUDE=--include_path=$(PRU_SUPPORT)/include --include_path=$(PRU_SUPPORT)/include/am335x
 
-STACK_SIZE=0x100
-HEAP_SIZE=0x100
+pru_options 		= --silicon_version=2 --hardware_mac=on -i/usr/include/arm-linux-gnueabihf/include -i/usr/include/arm-linux-gnueabihf/lib $(INCLUDE)
+pru_compiler 		= /usr/bin/clpru
+pru_hex_converter 	= /usr/bin/hexpru
 
-CFLAGS=-v3 -O2 --printf_support=minimal --display_error_number --endian=little --hardware_mac=on --obj_directory=$(GEN_DIR) --pp_directory=$(GEN_DIR) --asm_directory=$(GEN_DIR) -ppd -ppa --asm_listing --c_src_interlist # --absolute_listing
 
-LFLAGS=--reread_libs --warn_sections --stack_size=$(STACK_SIZE) --heap_size=$(HEAP_SIZE) -m $(GEN_DIR)/$(TARGET).map
+all: exports arm_host
 
-# Lookup PRU by address
-ifeq ($(PRUN),0)
-PRU_ADDR=4a334000
-endif
-ifeq ($(PRUN),1)
-PRU_ADDR=4a338000
-endif
+arm_host: pru_data.bin pru_code.bin arm_host.c
+	gcc -std=gnu11 arm_host.c -o arm_host -lprussdrv -lrt
 
-PRU_DIR=$(wildcard /sys/devices/platform/ocp/4a32600*.pruss-soc-bus/4a300000.pruss/$(PRU_ADDR).*/remoteproc/remoteproc*)
+exports:
+	@export PRU_SDK_DIR=/usr
+	@export PRU_CGT_DIR=/usr/include/arm-linux-gnueabihf
 
-all: stop install start
+PRUppp.obj: PRUppp.c
+	$(pru_compiler) $(pru_options) --opt_level=off -c PRUppp.c
+			
+PRUppp.elf: PRUppp.obj 
+	$(pru_compiler) $(pru_options) -z PRUppp.obj -llibc.a -m PRUppp.map -o PRUppp.elf AM335x_PRU.cmd --quiet 
 
-stop:
-	@echo "-    Stopping PRU $(PRUN)"
-	@echo stop | sudo tee $(PRU_DIR)/state || echo Cannot stop $(PRUN)
-
-start:
-	@echo "-    Starting PRU $(PRUN)"
-	@echo start | sudo tee $(PRU_DIR)/state
-
-install: $(GEN_DIR)/$(TARGET).out
-	@echo '-	copying firmware file $(GEN_DIR)/$(TARGET).out to /lib/firmware/am335x-pru$(PRUN)-fw'
-	@sudo cp $(GEN_DIR)/$(TARGET).out /lib/firmware/am335x-pru$(PRUN)-fw
-
-$(GEN_DIR)/$(TARGET).out: $(GEN_DIR)/$(TARGET).obj
-	@echo 'LD	$^' 
-	@lnkpru -i$(PRU_CGT)/lib -i$(PRU_CGT)/include $(LFLAGS) -o $@ $^ $(LINKER_COMMAND_FILE) --library=libc.a $(LIBS) $^
-
-$(GEN_DIR)/$(TARGET).obj: $(TARGET).c
-	@mkdir -p $(GEN_DIR)
-	@echo 'CC	$<'
-	@clpru --include_path=$(PRU_CGT)/include $(INCLUDE) $(CFLAGS) -D=PRUN=$(PRUN) -fe $@ $<
+pru_code.bin pru_data.bin: bin.cmd PRUppp.elf
+	$(pru_hex_converter) bin.cmd ./PRUppp.elf --quiet
 
 clean:
-	@echo 'CLEAN	.    PRU $(PRUN)'
-	@rm -rf $(GEN_DIR)
+	rm PRUppp.obj
+	rm PRUppp.elf
+	rm PRUppp.map

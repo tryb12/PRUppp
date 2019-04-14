@@ -1,5 +1,5 @@
 export PRUN=0
-export TARGET=main
+export TARGET=PRUppp
 echo PRUN=$PRUN
 echo TARGET=$TARGET
 

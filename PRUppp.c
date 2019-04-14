@@ -2,6 +2,7 @@
 
 #include <stdint.h>
 #include <pru_uart.h>
+#include <pru_cfg.h>
 #include "resource_table_empty.h"
 #include "PRUppp.h"
 #include "fcs16.c"
@@ -19,6 +20,8 @@
 #define OPEN 1
 
 #define ESCAPE 1
+
+#define PRU_SHARED_MEM_ADDR 0x00012000
 
 uint8_t txReady = 0;
 uint8_t txLen = 0;
@@ -517,6 +520,9 @@ void init(void)
 	CT_UART.MCR_bit.AFE = 0x0;
 	CT_UART.MCR_bit.RTS = 0x0;
 
+	// enable OCP
+	CT_CFG.SYSCFG_bit.STANDBY_INIT = 0;	
+
 	/*** END INITIALIZATION ***/
 
 }
@@ -524,6 +530,8 @@ void init(void)
 void main(void)
 {
 	volatile uint32_t not_done = 1;
+	//direct pointer to memory address
+	volatile int* shared_mem = (volatile int *) PRU_SHARED_MEM_ADDR;
 
 	init();
 
