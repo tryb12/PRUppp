@@ -533,6 +533,10 @@ void main(void)
 	//direct pointer to memory address
 	volatile int* shared_mem = (volatile int *) PRU_SHARED_MEM_ADDR;
 
+	while(shared_mem[0]!=OUR_IP) {}
+
+	shared_mem[1]=OUR_IP;
+
 	init();
 
 	while(1) {

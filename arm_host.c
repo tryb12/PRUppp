@@ -2,6 +2,7 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <signal.h>
 #include "prussdrv.h"
 #include "pruss_intc_mapping.h"
 
@@ -9,6 +10,12 @@
 #define SHM_OFFSET 2048		// http://www.embedded-things.com/bbb/understanding-bbb-pru-shared-memory-access/
 
 #define OUR_IP 0x04030201
+
+volatile sig_atomic_t sig_exit = 0;
+
+void handle_exit(int sig){ 
+	  sig_exit = 1; 
+}
 
 int pru_init(void)
 {
@@ -48,6 +55,7 @@ volatile int32_t* init_prumem()
 
 int main(void)
 {
+	signal(SIGINT, handle_exit); 
 	/* initialize the PRU */
 	printf("pruss driver init (%i)\n", pru_init());
 
@@ -57,7 +65,7 @@ int main(void)
 	/* get the memory pointer to the shared data segment */
 	volatile unsigned int* pruDataMem = init_prumem();
 
-	printf("sending CAFEBABE to PRU\n");
+	printf("sending IP to  PRU\n");
 
 	/* write to shared data memory  */
 	pruDataMem[0] = OUR_IP;
@@ -65,8 +73,21 @@ int main(void)
 	sleep(1);
 
 	/* read from shared data memory */
-	printf("PRU replies: %X\n", pruDataMem[1]);
+	if(pruDataMem[1] != OUR_IP) 
+	{
+		printf("no response from PRU\n");
+		printf("stopping  PRU\n");
+		pru_stop(PRU_NUM);
+		return 1;
+	}
+	printf("IP set to: %X\n", OUR_IP);
+	
+	while(1)
+	{
+		if(sig_exit) break;
+	}
 
+	printf("stopping  PRU\n");
 	pru_stop(PRU_NUM);
 
 	return 0;
