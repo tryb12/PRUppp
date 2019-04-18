@@ -13,9 +13,6 @@
 #define MAX_CHARS	8
 #define BUFFER_SIZE	1500
 
-#define OUR_IP 0x04030201
-#define THEIR_IP 0x05030201
-
 #define CLOSED 0
 #define OPEN 1
 
@@ -33,6 +30,9 @@ uint8_t frameEnd = 0;
 uint8_t txBuffer[BUFFER_SIZE];
 
 uint8_t unstuff = 0;
+
+uint32_t serverIp;
+uint32_t clientIp; 
 
 
 void Rx(void)
@@ -298,15 +298,15 @@ void handleIPCPConfigReq(cpOption * ipcp, cpFrame* ncp)
 		ipAddr = bufToIp(ipcp->data);
 		if(ipAddr == 0)
 		{
-			ipToBuf(ipcp->data, OUR_IP); 
+			ipToBuf(ipcp->data, serverIp); 
 			ncp->code = CONFIGURE_NAK;
 			sendPpp();
 			TxConf();
-			ipToBuf(ipcp->data, THEIR_IP); 
+			ipToBuf(ipcp->data, clientIp); 
 			ncp->code = CONFIGURE_REQ;
 			sendPpp();
 		}
-	/*	else if (ipAddr == OUR_IP)
+	/*	else if (ipAddr == serverIp)
 		{
 			ncp->code = CONFIGURE_ACK;
 			sendPpp();
@@ -326,7 +326,7 @@ void handleIPCPConfigAck(cpOption * ipcp)
 	if(ipcp->type == 0x03) // IP-Address 
 	{
 		ipAddr = bufToIp(ipcp->data);
-		if(ipAddr == OUR_IP)
+		if(ipAddr == serverIp)
 		{
 			//address configured
 		}
@@ -344,7 +344,7 @@ void handleIPCPConfigNak(cpOption * ipcp)
 	if(ipcp->type == 0x03) // IP-Address 
 	{
 		ipAddr = bufToIp(ipcp->data);
-		if(ipAddr == OUR_IP)
+		if(ipAddr == serverIp)
 		{
 			//address configured
 		}
@@ -533,11 +533,15 @@ void main(void)
 	//direct pointer to memory address
 	volatile int* shared_mem = (volatile int *) PRU_SHARED_MEM_ADDR;
 
-	while(shared_mem[0]!=OUR_IP) {}
-
-	shared_mem[1]=OUR_IP;
-
 	init();
+
+	while(shared_mem[1] != 1) {}
+	serverIp = shared_mem[0]; 
+	shared_mem[1] = serverIp;
+
+	while(shared_mem[1] != 1) {}
+	clientIp = shared_mem[0]; 
+	shared_mem[1] = clientIp;
 
 	while(1) {
 		Rx();

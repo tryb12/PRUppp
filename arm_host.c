@@ -3,6 +3,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <signal.h>
+#include <arpa/inet.h>
 #include "prussdrv.h"
 #include "pruss_intc_mapping.h"
 
@@ -11,9 +12,20 @@
 
 #define OUR_IP 0x04030201
 
+#define SERVER 0
+#define CLIENT 1
+
+char conf_file_list[2][100] = {
+	"server_ip.txt",
+	"client_ip.txt"};
+
+
 volatile sig_atomic_t sig_exit = 0;
 
-void handle_exit(int sig){ 
+volatile unsigned int* pruDataMem = NULL;
+
+void handle_exit(int sig) 
+{ 
 	  sig_exit = 1; 
 }
 
@@ -53,6 +65,48 @@ volatile int32_t* init_prumem()
 	return p+SHM_OFFSET;
 }
 
+int get_ip_conf(int ip_index)
+{
+	FILE* f = fopen(conf_file_list[ip_index], "r");
+	uint8_t buf[20];
+	uint32_t ip;
+	
+	if(f == NULL)
+	{
+		printf("error: cannot open file\n");
+		return -1;
+	}
+	
+	if(0 > fscanf(f, "%s", buf))
+	{
+		printf("error: read file");
+		return -1;
+	}
+	
+	if(1 != inet_pton(AF_INET, buf, &ip))
+	{
+		printf("error: ip format not valid\n");
+		return -1;
+	}
+
+	pruDataMem[0] = ip;
+	pruDataMem[1] = 1;
+
+	sleep(1);
+
+	if(pruDataMem[1] != ip) 
+	{
+		printf("error: no response from PRU %x\n", pruDataMem[1]);
+		return -1;
+	}
+	else
+	{
+		printf("ip configured: %d.%d.%d.%d\n", ip & 0xff, (ip >> 8) & 0xff, (ip >> 16) & 0xff, (ip >> 24) & 0xff);
+	}
+
+	return 0;
+}
+
 int main(void)
 {
 	signal(SIGINT, handle_exit); 
@@ -63,28 +117,30 @@ int main(void)
 	pru_load(PRU_NUM, "pru_data.bin", "pru_code.bin");
 
 	/* get the memory pointer to the shared data segment */
-	volatile unsigned int* pruDataMem = init_prumem();
+	pruDataMem = init_prumem();
 
-	printf("sending IP to  PRU\n");
-
-	/* write to shared data memory  */
-	pruDataMem[0] = OUR_IP;
-
-	sleep(1);
-
-	/* read from shared data memory */
-	if(pruDataMem[1] != OUR_IP) 
+	/* read erver ip and send to pru */
+	printf("configuring server ip\n");
+	if(get_ip_conf(SERVER))	
 	{
-		printf("no response from PRU\n");
 		printf("stopping  PRU\n");
 		pru_stop(PRU_NUM);
 		return 1;
 	}
-	printf("IP set to: %X\n", OUR_IP);
-	
+
+	/* read client ip and send to pru */
+	printf("configuring client ip\n");
+	if(get_ip_conf(CLIENT))	
+	{
+		printf("stopping  PRU\n");
+		pru_stop(PRU_NUM);
+		return 1;
+	}
+
 	while(1)
 	{
 		if(sig_exit) break;
+		//update_icmp_stats();
 	}
 
 	printf("stopping  PRU\n");
