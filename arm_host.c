@@ -14,15 +14,20 @@
 
 #define SERVER 0
 #define CLIENT 1
+#define STATS 2
 
-char conf_file_list[2][100] = {
+char conf_file_list[3][100] = {
 	"server_ip.txt",
-	"client_ip.txt"};
+	"client_ip.txt",
+	"icmp_stats.txt"};
 
 
 volatile sig_atomic_t sig_exit = 0;
 
 volatile unsigned int* pruDataMem = NULL;
+
+uint32_t icmpCount = 0;
+uint32_t icmpByteCount = 0;
 
 void handle_exit(int sig) 
 { 
@@ -80,8 +85,10 @@ int get_ip_conf(int ip_index)
 	if(0 > fscanf(f, "%s", buf))
 	{
 		printf("error: read file");
+		fclose(f);
 		return -1;
 	}
+	fclose(f);
 	
 	if(1 != inet_pton(AF_INET, buf, &ip))
 	{
@@ -103,8 +110,29 @@ int get_ip_conf(int ip_index)
 	{
 		printf("ip configured: %d.%d.%d.%d\n", ip & 0xff, (ip >> 8) & 0xff, (ip >> 16) & 0xff, (ip >> 24) & 0xff);
 	}
-
 	return 0;
+}
+
+void update_icmp_stats()
+{
+	volatile uint16_t * shm = (uint16_t*)&pruDataMem[STATS];
+	if(shm[0] == 1)
+	{
+		icmpCount++;
+		icmpByteCount += shm[1];
+		shm[0] = 0;
+		FILE* f = fopen(conf_file_list[STATS], "w+");
+		if(f != NULL)
+		{	
+			fprintf(f, "ICMP echo requests: %u\n", icmpCount);
+			fprintf(f, "byte size: %u\n", icmpByteCount);
+			fclose(f);
+		}
+		else
+		{
+			printf("warning: cannot open file: %s\n", conf_file_list[STATS]);
+		}	
+	}	
 }
 
 int main(void)
@@ -140,7 +168,7 @@ int main(void)
 	while(1)
 	{
 		if(sig_exit) break;
-		//update_icmp_stats();
+		update_icmp_stats();
 	}
 
 	printf("stopping  PRU\n");
