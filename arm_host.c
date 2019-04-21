@@ -165,6 +165,8 @@ int main(void)
 		return 1;
 	}
 
+	printf("ppp server running...\n");
+
 	while(1)
 	{
 		if(sig_exit) break;

@@ -34,6 +34,7 @@ uint8_t unstuff = 0;
 uint32_t serverIp;
 uint32_t clientIp; 
 
+volatile int* shared_mem = (volatile int *) PRU_SHARED_MEM_ADDR;
 
 void Rx(void)
 {
@@ -409,6 +410,9 @@ void processIcmp(ipHeader* ip, icmpHeader* icmp)
 {
 	if(icmp->type == ICMP_ECHO_REQUEST)		
 	{
+		volatile uint16_t* shm = &shared_mem[2];
+		shm[1] = ip->length; 
+		shm[0] = 1; 
 		icmp->type = ICMP_ECHO_REPLY;
 		swapIp(&ip->sourceAddr, &ip->destinationAddr);	
 		ip->ttl--;
@@ -531,7 +535,6 @@ void main(void)
 {
 	volatile uint32_t not_done = 1;
 	//direct pointer to memory address
-	volatile int* shared_mem = (volatile int *) PRU_SHARED_MEM_ADDR;
 
 	init();
 
