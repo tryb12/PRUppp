@@ -170,7 +170,9 @@ int main(void)
 	while(1)
 	{
 		if(sig_exit) break;
+    		prussdrv_pru_wait_event (PRU_EVTOUT_0);
 		update_icmp_stats();
+	    	prussdrv_pru_clear_event (PRU_EVTOUT_0, PRU0_ARM_INTERRUPT);
 	}
 
 	printf("stopping  PRU\n");
